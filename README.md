@@ -2,7 +2,7 @@
 
 Vzdělávací kyberbezpečnostní hra v prohlížeči, ve které se hráč ujímá role operátora bezpečnostního centra (SOC) a v reálném čase brání firemní server před síťovými útoky.
 
-🔗 **Live verze hry:** `https://TVOJE-JMENO.github.io/NAZEV-REPOZITARE/`
+🔗 **Live verze hry:** `(https://mertyx.github.io/Zabavna-Hra/)`
 
 ---
 
