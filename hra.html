@@ -1,0 +1,2272 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NETGUARD // ZERO-DAY — SOC Kyberbezpečnostní Simulátor</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Základní reset a uzamčení na 100% výšky viewportu bez scrollování */
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #070b14;
+      color: #e2e8f0;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 15% 15%, rgba(0, 245, 212, 0.06) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(192, 132, 252, 0.07) 0%, transparent 45%),
+        #070b14;
+    }
+
+    .font-mono-soc {
+      font-family: 'Consolas', 'Courier New', ui-monospace, SFMono-Regular, monospace;
+    }
+
+    /* Jemný CRT / scanline efekt přes herní plochu */
+    .scanlines {
+      background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0) 50%,
+        rgba(0, 0, 0, 0.14) 50%,
+        rgba(0, 0, 0, 0.14) 100%
+      );
+      background-size: 100% 4px;
+    }
+
+    /* Neonové texty a odlesky */
+    .glow-cyan {
+      color: #00f5d4;
+      text-shadow: 0 0 12px rgba(0, 245, 212, 0.5);
+    }
+
+    /* Karta obranného modulu ve spodním docku */
+    .module-card {
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    .module-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .module-card.active[data-tool="1"] {
+      border-color: #00f5d4;
+      background: linear-gradient(180deg, rgba(0, 245, 212, 0.2) 0%, rgba(12, 19, 34, 0.96) 100%);
+      box-shadow: 0 0 18px rgba(0, 245, 212, 0.32);
+      transform: translateY(-2px);
+    }
+
+    .module-card.active[data-tool="2"] {
+      border-color: #f59e0b;
+      background: linear-gradient(180deg, rgba(245, 158, 11, 0.2) 0%, rgba(12, 19, 34, 0.96) 100%);
+      box-shadow: 0 0 18px rgba(245, 158, 11, 0.32);
+      transform: translateY(-2px);
+    }
+
+    .module-card.active[data-tool="3"] {
+      border-color: #c084fc;
+      background: linear-gradient(180deg, rgba(192, 132, 252, 0.22) 0%, rgba(12, 19, 34, 0.96) 100%);
+      box-shadow: 0 0 18px rgba(192, 132, 252, 0.34);
+      transform: translateY(-2px);
+    }
+
+    .module-card.active[data-tool="4"] {
+      border-color: #ff2a6d;
+      background: linear-gradient(180deg, rgba(255, 42, 109, 0.22) 0%, rgba(12, 19, 34, 0.96) 100%);
+      box-shadow: 0 0 18px rgba(255, 42, 109, 0.34);
+      transform: translateY(-2px);
+    }
+
+    /* Vlastní tenký scrollbar pro modální okna na malých displejích */
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: #070b14;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 999px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: #00f5d4;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- =================================================================== -->
+    <!-- 1. HORNÍ HUD LIŠTA (TELEMETRIE SOC)                                  -->
+    <!-- =================================================================== -->
+    <header class="shrink-0 bg-[#0b1221]/95 border-b border-slate-800/90 px-3 py-2 sm:px-5 flex flex-wrap items-center justify-between gap-2 z-20">
+      <!-- Značka, název a číslo vlny -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-[#00f5d4]/10 border border-[#00f5d4]/50 flex items-center justify-center shadow-[0_0_14px_rgba(0,245,212,0.2)] shrink-0">
+          <svg class="w-5 h-5 text-[#00f5d4]" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3l8 4v5c0 5.25-3.4 9.74-8 11-4.6-1.26-8-5.75-8-11V7l8-4z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-mono-soc font-extrabold text-sm sm:text-base tracking-wider text-white">
+              NETGUARD <span class="glow-cyan">// ZERO-DAY</span>
+            </span>
+            <span id="hud-wave" class="font-mono-soc text-[11px] font-bold px-2 py-0.5 rounded-full bg-[#c084fc]/15 text-[#d8b4fe] border border-[#c084fc]/40">
+              VLNA 1/5
+            </span>
+          </div>
+          <div class="text-[11px] text-slate-400 hidden md:block">SOC Obrana Sítě &amp; Detekce Hrozeb</div>
+        </div>
+      </div>
+
+      <!-- Stavové indikátory (Pills) -->
+      <div class="flex flex-wrap items-center gap-1.5 sm:gap-2.5 text-xs">
+        <!-- CORE HP -->
+        <div class="bg-[#070b14] border border-slate-800 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">CORE HP</span>
+          <div class="w-16 sm:w-24 h-2 bg-slate-800 rounded-full overflow-hidden">
+            <div id="hud-hp-bar" class="h-full bg-[#00f5d4] transition-all duration-200" style="width: 100%;"></div>
+          </div>
+          <span id="hud-hp-val" class="font-mono-soc font-bold text-[#00f5d4]">100%</span>
+          <span id="hud-shield-badge" class="hidden font-mono-soc text-[10px] px-1.5 py-0.2 rounded bg-[#c084fc]/25 text-[#e9d5ff] border border-[#c084fc]" title="Aktivní Core Firewall Štít">ŠTÍT</span>
+          <span id="hud-dpi-badge" class="hidden font-mono-soc text-[10px] px-1.5 py-0.2 rounded bg-[#00f5d4]/20 text-[#00f5d4] border border-[#00f5d4]" title="Aktivní Deep Packet Scan">DPI</span>
+        </div>
+
+        <!-- ZNALOSTNÍ SKÓRE -->
+        <div class="bg-[#070b14] border border-[#00f5d4]/30 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5" title="Měří přesnost tvých kyberbezpečnostních rozhodnutí">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 hidden sm:inline">ZNALOSTNÍ SKÓRE</span>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:hidden">ZNALOST</span>
+          <span id="hud-knowledge" class="font-mono-soc font-extrabold text-[#00f5d4]">100 %</span>
+        </div>
+
+        <!-- SKÓRE + COMBO -->
+        <div class="bg-[#070b14] border border-slate-800 rounded-xl px-2.5 py-1.5 flex items-center gap-1.5">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">SKÓRE</span>
+          <span id="hud-score" class="font-mono-soc font-bold text-white">0</span>
+          <span id="hud-combo" class="font-mono-soc text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#f59e0b]/20 text-[#fbbf24] border border-[#f59e0b]/40">x1</span>
+        </div>
+
+        <!-- KREDITY -->
+        <div class="bg-[#070b14] border border-[#f59e0b]/35 rounded-xl px-2.5 py-1.5 flex items-center gap-1" title="SOC Kredity pro nákup vylepšení mezi vlnami">
+          <span class="text-[#fbbf24] font-bold">◈</span>
+          <span id="hud-credits" class="font-mono-soc font-bold text-[#fbbf24]">100</span>
+        </div>
+      </div>
+
+      <!-- Akční tlačítka: Databáze hrozeb a Zvuk -->
+      <div class="flex items-center gap-2">
+        <button id="btn-hud-codex" type="button" class="px-3 py-1.5 rounded-xl bg-[#c084fc]/15 hover:bg-[#c084fc]/30 border border-[#c084fc]/50 text-[#e9d5ff] text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer">
+          <span>📘</span>
+          <span class="hidden sm:inline">Databáze hrozeb</span>
+          <span class="sm:hidden">Hrozby</span>
+        </button>
+        <button id="btn-hud-sound" type="button" class="w-8 h-8 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 flex items-center justify-center text-sm transition cursor-pointer" title="Zapnout / Vypnout zvuk">
+          🔊
+        </button>
+      </div>
+    </header>
+
+    <!-- =================================================================== -->
+    <!-- 2. HLAVNÍ INTERAKTIVNÍ CANVAS ARÉNA (FLEX: 1)                       -->
+    <!-- =================================================================== -->
+    <main id="arena-container" class="relative flex-1 min-h-0 w-full overflow-hidden">
+      <canvas id="gameCanvas" class="block w-full h-full cursor-crosshair"></canvas>
+      <div class="scanlines pointer-events-none absolute inset-0"></div>
+
+      <!-- Vzdělávací toast banner uvnitř horní části arény -->
+      <div id="toast-banner" class="pointer-events-none absolute top-3 left-1/2 -translate-x-1/2 opacity-0 transition-opacity duration-300 z-20 w-[92%] max-w-2xl">
+        <div id="toast-box" class="px-4 py-2 rounded-xl bg-[#0b1221]/95 border border-[#00f5d4]/60 text-xs sm:text-sm text-center font-medium shadow-2xl backdrop-blur-md text-slate-100">
+          SOC Telemetrie připravena.
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- OVERLAY A: ÚVODNÍ OBRAZOVKA (START OVERLAY)                       -->
+      <!-- ================================================================= -->
+      <div id="overlay-start" class="absolute inset-0 bg-[#070b14]/90 backdrop-blur-md flex items-center justify-center p-4 z-30">
+        <div class="max-w-2xl w-full bg-[#0b1221]/95 border border-slate-800 rounded-2xl p-5 sm:p-7 text-center shadow-[0_0_50px_rgba(0,0,0,0.85)]">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00f5d4]/10 border border-[#00f5d4]/40 text-[#00f5d4] font-mono-soc text-[11px] font-bold mb-3">
+            <span class="w-2 h-2 rounded-full bg-[#00f5d4] animate-ping"></span>
+            SECURITY OPERATIONS CENTER // AKTIVNÍ OBRANA
+          </div>
+
+          <h1 class="font-mono-soc text-2xl sm:text-4xl font-extrabold text-white tracking-tight mb-2.5">
+            NETGUARD <span class="glow-cyan">// ZERO-DAY</span>
+          </h1>
+
+          <p class="text-slate-300 text-xs sm:text-sm leading-relaxed max-w-xl mx-auto mb-5">
+            Chraň firemní <strong class="text-[#00f5d4]">SERVER CORE</strong> před kybernetickými útoky!
+            Legitimní provoz (<span class="text-emerald-400 font-semibold">HTTPS / TLS 1.3</span>) nech bezpečně projít do jádra.
+            Škodlivé hrozby zneškodni správným obranným modulem (<span class="font-mono-soc text-[#fbbf24] font-bold">[1]–[4]</span>).
+          </p>
+
+          <!-- Dvě informační karty -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left mb-6">
+            <div class="bg-[#070b14] border border-slate-800 rounded-xl p-3.5">
+              <div class="font-mono-soc text-xs font-bold text-[#00f5d4] mb-1">🖱️ Ovládání myší i klávesnicí</div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Najeď myší na paket (zobrazí se zaměřovač) a stiskni klávesu <span class="font-mono-soc text-white font-bold">1–4</span> pro okamžitý výstřel, nebo vyber modul dole a klikni na paket.
+              </p>
+            </div>
+            <div class="bg-[#070b14] border border-slate-800 rounded-xl p-3.5">
+              <div class="font-mono-soc text-xs font-bold text-[#fbbf24] mb-1">🧠 Měření pokroku poznání</div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Hra vyhodnocuje přesnost v 5 oblastech kyberbezpečnosti, od 3. vlny prověří čtení maskovaných <span class="text-slate-200">STEALTH</span> paketů a ukládá tvůj pokrok.
+              </p>
+            </div>
+          </div>
+
+          <!-- Tlačítka spuštění -->
+          <div class="flex flex-wrap items-center justify-center gap-3">
+            <button id="btn-start-game" type="button" class="px-6 py-3 rounded-xl bg-[#00f5d4] hover:bg-[#38ffe3] text-[#070b14] font-mono-soc font-extrabold text-sm tracking-wide shadow-[0_0_24px_rgba(0,245,212,0.45)] transition transform hover:scale-[1.03] cursor-pointer">
+              ▶ SPUSTIT OBRANU SÍTĚ
+            </button>
+            <button id="btn-start-codex" type="button" class="px-5 py-3 rounded-xl bg-slate-800/90 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-sm transition cursor-pointer">
+              📘 Prostudovat Databázi hrozeb
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- OVERLAY B: MEZIVLNOVÝ TAKTICKÝ OBCHOD & MINI-VÝZVA                -->
+      <!-- ================================================================= -->
+      <div id="overlay-shop" class="hidden absolute inset-0 bg-[#070b14]/92 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 z-30">
+        <div class="max-w-4xl w-full max-h-full overflow-y-auto custom-scroll bg-[#0b1221] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4">
+          <!-- Hlavička -->
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div>
+              <span class="font-mono-soc text-[11px] font-bold text-[#00f5d4] uppercase">Vlna úspěšně ubráněna // Taktická příprava</span>
+              <h2 id="shop-heading" class="font-mono-soc text-lg sm:text-2xl font-extrabold text-white">Příprava na Vlnu 2</h2>
+            </div>
+            <div class="px-3 py-1.5 rounded-xl bg-[#f59e0b]/15 border border-[#f59e0b]/40 font-mono-soc text-xs sm:text-sm font-bold text-[#fbbf24]">
+              Kredity: <span id="shop-credits-val">100</span> ◈
+            </div>
+          </div>
+
+          <!-- Obsah ve 2 sloupcích -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <!-- Levý sloupec: Bezpečnostní mini-výzva -->
+            <div class="bg-[#070b14] border border-[#c084fc]/40 rounded-xl p-4 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between gap-2 mb-2">
+                  <span class="font-mono-soc text-[11px] font-bold px-2 py-0.5 rounded bg-[#c084fc]/20 text-[#e9d5ff] border border-[#c084fc]/40">
+                    BEZPEČNOSTNÍ MINI-VÝZVA (+120 ◈)
+                  </span>
+                  <span id="quiz-status" class="font-mono-soc text-[11px] text-[#fbbf24]">Čeká na odpověď</span>
+                </div>
+                <p id="quiz-question" class="text-xs sm:text-sm text-slate-200 font-medium leading-relaxed mb-3">
+                  Otázka...
+                </p>
+                <div id="quiz-options" class="flex flex-col gap-2"></div>
+              </div>
+              <div id="quiz-feedback" class="hidden mt-3 p-2.5 rounded-xl text-xs leading-relaxed"></div>
+            </div>
+
+            <!-- Pravý sloupec: 3 Taktická vylepšení -->
+            <div class="bg-[#070b14] border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+              <div>
+                <h3 class="font-mono-soc text-xs font-bold uppercase tracking-wider text-[#00f5d4] mb-3">
+                  ⚡ Taktický SOC Obchod (Vylepšení obrany)
+                </h3>
+                <div id="shop-upgrades-list" class="flex flex-col gap-2.5"></div>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-3">
+                Tip: Deep Packet Scan odhalí maskované STEALTH pakety v celé následující vlně.
+              </p>
+            </div>
+          </div>
+
+          <!-- Spodní tlačítko pokračování -->
+          <div class="flex justify-end pt-1">
+            <button id="btn-next-wave" type="button" class="px-6 py-2.5 rounded-xl bg-[#00f5d4] hover:bg-[#38ffe3] text-[#070b14] font-mono-soc font-extrabold text-sm shadow-[0_0_20px_rgba(0,245,212,0.35)] transition cursor-pointer">
+              Další vlna ▶
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- OVERLAY C: ZÁVĚREČNÝ ZNALOSTNÍ & HERNÍ REPORT                     -->
+      <!-- ================================================================= -->
+      <div id="overlay-report" class="hidden absolute inset-0 bg-[#070b14]/94 backdrop-blur-lg flex items-center justify-center p-3 sm:p-5 z-30">
+        <div class="max-w-4xl w-full max-h-full overflow-y-auto custom-scroll bg-[#0b1221] border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-2xl flex flex-col gap-4">
+          <!-- Hlavička reportu -->
+          <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div>
+              <span id="report-badge" class="font-mono-soc text-[11px] font-bold px-2.5 py-0.5 rounded bg-[#00f5d4]/15 text-[#00f5d4] border border-[#00f5d4]/40">
+                MISE DOKONČENA
+              </span>
+              <h2 id="report-title" class="font-mono-soc text-xl sm:text-2xl font-extrabold text-white mt-1">
+                Znalostní &amp; Herní Report
+              </h2>
+            </div>
+            <div class="text-right">
+              <div class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">Celkové Znalostní Skóre</div>
+              <div class="flex items-baseline justify-end gap-2">
+                <span id="report-knowledge-val" class="font-mono-soc text-3xl font-extrabold text-[#00f5d4]">100 %</span>
+                <span id="report-rank-badge" class="font-mono-soc text-xs font-bold px-2 py-0.5 rounded bg-[#f59e0b]/20 text-[#fbbf24] border border-[#f59e0b]/40">
+                  RANK S
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hlavní 2-sloupcový obsah -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Přesnost v 5 kategoriích -->
+            <div class="bg-[#070b14] border border-slate-800 rounded-xl p-4">
+              <h3 class="font-mono-soc text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
+                📊 Úspěšnost podle kategorií provozu
+              </h3>
+              <div id="report-categories" class="flex flex-col gap-2.5"></div>
+            </div>
+
+            <!-- Historie pokusů v localStorage + Doporučení -->
+            <div class="flex flex-col gap-3">
+              <div class="bg-[#070b14] border border-slate-800 rounded-xl p-4">
+                <h3 class="font-mono-soc text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  📈 Měření pokroku poznání (Historie pokusů)
+                </h3>
+                <p id="report-history-summary" class="text-xs text-slate-200 mb-3">
+                  První zaznamenaný pokus.
+                </p>
+                <div id="report-history-chart" class="flex items-end gap-2 h-16 pt-2 border-t border-slate-800/80"></div>
+              </div>
+
+              <div class="bg-[#070b14] border border-[#f59e0b]/35 rounded-xl p-4 flex-1">
+                <h3 class="font-mono-soc text-xs font-bold uppercase tracking-wider text-[#fbbf24] mb-1.5">
+                  🎯 Zpětná vazba SOC Analytika
+                </h3>
+                <p id="report-mentor-text" class="text-xs text-slate-300 leading-relaxed"></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Spodní souhrn a tlačítko Hrát znovu -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <div class="flex flex-wrap items-center gap-4 font-mono-soc text-xs text-slate-400">
+              <span>Finální skóre: <strong id="report-final-score" class="text-white">0</strong></span>
+              <span>Správná rozhodnutí: <strong id="report-correct-count" class="text-[#00f5d4]">0</strong></span>
+              <span>Chyby / Průniky: <strong id="report-wrong-count" class="text-[#ff2a6d]">0</strong></span>
+            </div>
+            <button id="btn-play-again" type="button" class="px-6 py-2.5 rounded-xl bg-[#00f5d4] hover:bg-[#38ffe3] text-[#070b14] font-mono-soc font-extrabold text-sm shadow-[0_0_20px_rgba(0,245,212,0.4)] transition cursor-pointer">
+              ↻ Hrát znovu
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- =================================================================== -->
+    <!-- 3. SPODNÍ PANEL OBRANNÝCH MODULŮ [1]–[4]                            -->
+    <!-- =================================================================== -->
+    <footer class="shrink-0 bg-[#0b1221]/95 border-t border-slate-800/90 px-3 py-2 sm:px-5 z-20">
+      <div class="max-w-6xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <!-- [1] TLS Šifrování -->
+        <button type="button" class="module-card active bg-[#070b14] border border-slate-800 rounded-xl px-3 py-2 text-left flex items-center gap-2.5 cursor-pointer" data-tool="1">
+          <div class="w-8 h-8 rounded-lg bg-[#00f5d4]/15 border border-[#00f5d4]/50 flex items-center justify-center font-mono-soc font-extrabold text-xs text-[#00f5d4] shrink-0">
+            [1]
+          </div>
+          <div class="min-w-0">
+            <div class="font-mono-soc text-xs font-bold text-[#00f5d4] truncate">TLS Šifrování</div>
+            <div class="text-[11px] text-slate-400 truncate">Nešifrovaný HTTP / FTP / Telnet</div>
+          </div>
+        </button>
+
+        <!-- [2] Phish Scanner -->
+        <button type="button" class="module-card bg-[#070b14] border border-slate-800 rounded-xl px-3 py-2 text-left flex items-center gap-2.5 cursor-pointer" data-tool="2">
+          <div class="w-8 h-8 rounded-lg bg-[#f59e0b]/15 border border-[#f59e0b]/50 flex items-center justify-center font-mono-soc font-extrabold text-xs text-[#fbbf24] shrink-0">
+            [2]
+          </div>
+          <div class="min-w-0">
+            <div class="font-mono-soc text-xs font-bold text-[#fbbf24] truncate">Phish Scanner</div>
+            <div class="text-[11px] text-slate-400 truncate">Podvodné domény &amp; přílohy</div>
+          </div>
+        </button>
+
+        <!-- [3] WAF / SQL Štít -->
+        <button type="button" class="module-card bg-[#070b14] border border-slate-800 rounded-xl px-3 py-2 text-left flex items-center gap-2.5 cursor-pointer" data-tool="3">
+          <div class="w-8 h-8 rounded-lg bg-[#c084fc]/15 border border-[#c084fc]/50 flex items-center justify-center font-mono-soc font-extrabold text-xs text-[#c084fc] shrink-0">
+            [3]
+          </div>
+          <div class="min-w-0">
+            <div class="font-mono-soc text-xs font-bold text-[#c084fc] truncate">WAF / SQL Štít</div>
+            <div class="text-[11px] text-slate-400 truncate">SQL Injection, XSS &amp; Path</div>
+          </div>
+        </button>
+
+        <!-- [4] DDoS Rate-Limiter -->
+        <button type="button" class="module-card bg-[#070b14] border border-slate-800 rounded-xl px-3 py-2 text-left flex items-center gap-2.5 cursor-pointer" data-tool="4">
+          <div class="w-8 h-8 rounded-lg bg-[#ff2a6d]/15 border border-[#ff2a6d]/50 flex items-center justify-center font-mono-soc font-extrabold text-xs text-[#ff2a6d] shrink-0">
+            [4]
+          </div>
+          <div class="min-w-0">
+            <div class="font-mono-soc text-xs font-bold text-[#ff2a6d] truncate">DDoS Rate-Limiter</div>
+            <div class="text-[11px] text-slate-400 truncate">Botnet, UDP &amp; SYN Flood</div>
+          </div>
+        </button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- MODÁLNÍ OKNO: DATABÁZE HROZEB (STUDIJNÍ PŘÍRUČKA)                     -->
+  <!-- ===================================================================== -->
+  <div id="modal-codex" class="hidden fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-3 sm:p-6">
+    <div class="bg-[#0b1221] border border-[#00f5d4]/40 rounded-2xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl overflow-hidden">
+      <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span class="text-lg">📘</span>
+          <div>
+            <h2 class="font-mono-soc font-extrabold text-sm sm:text-base text-white">DATABÁZE HROZEB &amp; OBRANNÝCH PROTOKOLŮ</h2>
+            <p class="text-[11px] text-slate-400">Aktivní hra je během studia bezpečně pozastavena</p>
+          </div>
+        </div>
+        <button id="btn-close-codex" type="button" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-mono-soc text-xs font-bold cursor-pointer">
+          ✕ ZAVŘÍT
+        </button>
+      </div>
+
+      <div class="p-4 sm:p-5 overflow-y-auto custom-scroll grid grid-cols-1 md:grid-cols-2 gap-3.5 text-xs">
+        <!-- Legitimní provoz -->
+        <div class="md:col-span-2 bg-[#070b14] border border-emerald-500/40 rounded-xl p-3.5">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+            <span class="font-mono-soc font-bold text-emerald-400">✅ LEGITIMNÍ PROVOZ (NESESTŘELOVAT — NECHAT PROJÍT!)</span>
+            <span class="font-mono-soc text-[11px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              ODMĚNA: +50 SKÓRE, +5 ◈
+            </span>
+          </div>
+          <p class="text-slate-300 leading-relaxed">
+            Bezpečná, šifrovaná nebo autentizovaná síťová komunikace: <code class="text-emerald-300">HTTPS / TLS 1.3</code>, <code class="text-emerald-300">SSH-2.0 KEY AUTH</code>, <code class="text-emerald-300">GET /api/health 200</code> nebo <code class="text-emerald-300">DNSSEC VERIFIED</code>. Musí bezpečně dorazit do Server Core!
+          </p>
+        </div>
+
+        <!-- [1] TLS Šifrování -->
+        <div class="bg-[#070b14] border border-slate-800 rounded-xl p-3.5">
+          <div class="font-mono-soc font-bold text-[#00f5d4] mb-1">[1] TLS Šifrování — Nešifrovaný přenos</div>
+          <p class="text-slate-300 leading-relaxed mb-1.5">
+            <strong>Indikátory:</strong> <code class="text-[#00f5d4]">HTTP / PLAINTEXT LOGIN</code>, <code class="text-[#00f5d4]">FTP ANONYMOUS PASS</code>, <code class="text-[#00f5d4]">TELNET ROOT SESSION</code>, <code class="text-[#00f5d4]">ARP SPOOF SNIFFER</code>.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            <strong>Riziko a obrana:</strong> Přenos hesel v otevřeném textu lze snadno odposlechnout (Man-in-the-Middle). Nasazení TLS 1.3 spojení zašifruje.
+          </p>
+        </div>
+
+        <!-- [2] Phish Scanner -->
+        <div class="bg-[#070b14] border border-slate-800 rounded-xl p-3.5">
+          <div class="font-mono-soc font-bold text-[#fbbf24] mb-1">[2] Phish Scanner — Podvody a Malware</div>
+          <p class="text-slate-300 leading-relaxed mb-1.5">
+            <strong>Indikátory:</strong> <code class="text-[#fbbf24]">podpora@mirosoft-security.com</code>, <code class="text-[#fbbf24]">FAKTURA_2026.pdf.exe</code>, <code class="text-[#fbbf24]">banka-overeni-uctu.xyz</code>, <code class="text-[#fbbf24]">FAKE OAUTH CONSENT</code>.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            <strong>Riziko a obrana:</strong> Typosquatting domén a spustitelné přílohy <code>.pdf.exe</code> kradou přihlašovací údaje. Phish Scanner je okamžitě izoluje.
+          </p>
+        </div>
+
+        <!-- [3] WAF / SQL Štít -->
+        <div class="bg-[#070b14] border border-slate-800 rounded-xl p-3.5">
+          <div class="font-mono-soc font-bold text-[#c084fc] mb-1">[3] WAF / SQL Štít — Webové injekce</div>
+          <p class="text-slate-300 leading-relaxed mb-1.5">
+            <strong>Indikátory:</strong> <code class="text-[#c084fc]">' OR 1=1 --</code>, <code class="text-[#c084fc]">UNION SELECT * FROM users</code>, <code class="text-[#c084fc]">&lt;img src=x onerror=alert(1)&gt;</code>, <code class="text-[#c084fc]">../../etc/passwd</code>.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            <strong>Riziko a obrana:</strong> SQL Injection, XSS a Path Traversal útočí na databázi a prohlížeč uživatelů. Web Application Firewall (WAF) je odfiltruje.
+          </p>
+        </div>
+
+        <!-- [4] DDoS Rate-Limiter -->
+        <div class="bg-[#070b14] border border-slate-800 rounded-xl p-3.5">
+          <div class="font-mono-soc font-bold text-[#ff2a6d] mb-1">[4] DDoS Rate-Limiter — Zahlcení sítě</div>
+          <p class="text-slate-300 leading-relaxed mb-1.5">
+            <strong>Indikátory:</strong> <code class="text-[#ff2a6d]">UDP BOTNET FLOOD</code>, <code class="text-[#ff2a6d]">TCP SYN FLOOD 45 Gbps</code>, <code class="text-[#ff2a6d]">HTTP GET SPAM x9999</code>, <code class="text-[#ff2a6d]">ICMP AMPLIFICATION</code>.
+          </p>
+          <p class="text-slate-400 leading-relaxed">
+            <strong>Riziko a obrana:</strong> Masivní záplava požadavků z botnetu vyčerpá kapacitu serveru. Rate-Limiter omezí tok z útočných IP adres.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- HERNÍ ENGINE (BEZPEČNÝ INLINE SCRIPT BEZ UZAVÍRACÍCH TAGŮ V ŘETĚZCÍCH) -->
+  <!-- ===================================================================== -->
+  <script>
+    "use strict";
+
+    // =========================================================================
+    // 1. DEFINICE OBRANNÝCH MODULŮ, KATALOGU PAKETŮ A MINI-VÝZEV
+    // =========================================================================
+    const MODULES = {
+      1: { id: 1, name: "TLS Šifrování", short: "TLS 1.3", color: "#00f5d4", category: "encryption" },
+      2: { id: 2, name: "Phish Scanner", short: "PHISH", color: "#f59e0b", category: "phishing" },
+      3: { id: 3, name: "WAF / SQL Štít", short: "WAF", color: "#c084fc", category: "webapp" },
+      4: { id: 4, name: "DDoS Rate-Limiter", short: "DDoS", color: "#ff2a6d", category: "ddos" }
+    };
+
+    const PACKET_DEFINITIONS = [
+      // LEGITIMNÍ PROVOZ (requiredTool: 0 -> nechat projít do Server Core)
+      {
+        requiredTool: 0,
+        category: "legit",
+        tag: "SAFE // TLS",
+        payload: "HTTPS / TLS 1.3",
+        color: "#10b981",
+        tip: "HTTPS / TLS 1.3 je šifrovaný a bezpečný provoz — musíš ho nechat projít do Server Core!"
+      },
+      {
+        requiredTool: 0,
+        category: "legit",
+        tag: "SAFE // SSH",
+        payload: "SSH-2.0 KEY AUTH",
+        color: "#10b981",
+        tip: "SSH-2.0 KEY AUTH je ověřené šifrované přihlášení správce."
+      },
+      {
+        requiredTool: 0,
+        category: "legit",
+        tag: "SAFE // API",
+        payload: "GET /api/health 200",
+        color: "#10b981",
+        tip: "GET /api/health 200 je běžná kontrola dostupnosti služby."
+      },
+      {
+        requiredTool: 0,
+        category: "legit",
+        tag: "SAFE // DNS",
+        payload: "DNSSEC VERIFIED",
+        color: "#10b981",
+        tip: "DNSSEC VERIFIED je kryptograficky podepsaný DNS záznam."
+      },
+
+      // [1] TLS Šifrování — Nešifrovaný provoz a odposlech
+      {
+        requiredTool: 1,
+        category: "encryption",
+        tag: "HTTP // 80",
+        payload: "HTTP / PLAINTEXT LOGIN",
+        color: "#00f5d4",
+        tip: "Nešifrovaný přenos hesla přes HTTP! Zabezpeč ho modulem [1] TLS Šifrování."
+      },
+      {
+        requiredTool: 1,
+        category: "encryption",
+        tag: "FTP // 21",
+        payload: "FTP ANONYMOUS PASS",
+        color: "#00f5d4",
+        tip: "FTP posílá přístupové údaje nešifrovaně. Použij [1] TLS Šifrování."
+      },
+      {
+        requiredTool: 1,
+        category: "encryption",
+        tag: "TELNET // 23",
+        payload: "TELNET ROOT SESSION",
+        color: "#00f5d4",
+        tip: "Telnet přenáší příkazy i hesla v otevřeném textu! Nasadit [1] TLS Šifrování."
+      },
+      {
+        requiredTool: 1,
+        category: "encryption",
+        tag: "MITM // LAN",
+        payload: "ARP SPOOF SNIFFER",
+        color: "#00f5d4",
+        tip: "Odposlech lokální sítě (ARP Spoofing) zachytí nešifrovaná data. Použij [1] TLS Šifrování."
+      },
+
+      // [2] Phish Scanner — Phishing a škodlivé návnady
+      {
+        requiredTool: 2,
+        category: "phishing",
+        tag: "PHISH // MAIL",
+        payload: "podpora@mirosoft-security.com",
+        color: "#f59e0b",
+        tip: "Podvodná doména s překlepem 'mirosoft'! Zablokuj ji modulem [2] Phish Scanner."
+      },
+      {
+        requiredTool: 2,
+        category: "phishing",
+        tag: "MALWARE // EXE",
+        payload: "FAKTURA_2026.pdf.exe",
+        color: "#f59e0b",
+        tip: "Dvojitá přípona .pdf.exe maskuje spustitelný malware! Použij [2] Phish Scanner."
+      },
+      {
+        requiredTool: 2,
+        category: "phishing",
+        tag: "PHISH // URL",
+        payload: "banka-overeni-uctu.xyz",
+        color: "#f59e0b",
+        tip: "Falešná bankovní doména .xyz krade hesla. Zneškodni ji pomocí [2] Phish Scanner."
+      },
+      {
+        requiredTool: 2,
+        category: "phishing",
+        tag: "PHISH // AUTH",
+        payload: "FAKE OAUTH CONSENT",
+        color: "#f59e0b",
+        tip: "Podvržená žádost o přístup k účtu (OAuth Phishing)! Použij [2] Phish Scanner."
+      },
+
+      // [3] WAF / SQL Štít — Webové injekce (SQLi, XSS, Path Traversal)
+      {
+        requiredTool: 3,
+        category: "webapp",
+        tag: "WAF // SQLi",
+        payload: "' OR 1=1 --",
+        color: "#c084fc",
+        tip: "SQL Injection útok pro obejití přihlášení! Zastaví ho [3] WAF / SQL Štít."
+      },
+      {
+        requiredTool: 3,
+        category: "webapp",
+        tag: "WAF // SQLi",
+        payload: "UNION SELECT * FROM users",
+        color: "#c084fc",
+        tip: "Pokus o vyčtení tabulky uživatelů z databáze! Použij [3] WAF / SQL Štít."
+      },
+      {
+        requiredTool: 3,
+        category: "webapp",
+        tag: "WAF // XSS",
+        payload: "<img src=x onerror=alert(1)>",
+        color: "#c084fc",
+        tip: "Cross-Site Scripting (XSS) injekce! Odfiltruj ji pomocí [3] WAF / SQL Štít."
+      },
+      {
+        requiredTool: 3,
+        category: "webapp",
+        tag: "WAF // LFI",
+        payload: "../../etc/passwd",
+        color: "#c084fc",
+        tip: "Path Traversal útok na systémové soubory serveru! Použij [3] WAF / SQL Štít."
+      },
+
+      // [4] DDoS Rate-Limiter — Objemové záplavy sítě
+      {
+        requiredTool: 4,
+        category: "ddos",
+        tag: "DDoS // UDP",
+        payload: "UDP BOTNET FLOOD",
+        color: "#ff2a6d",
+        tip: "Masivní UDP záplava z botnetu! Omez ji modulem [4] DDoS Rate-Limiter."
+      },
+      {
+        requiredTool: 4,
+        category: "ddos",
+        tag: "DDoS // SYN",
+        payload: "TCP SYN FLOOD 45 Gbps",
+        color: "#ff2a6d",
+        tip: "TCP SYN Flood vyčerpává spojení serveru! Použij [4] DDoS Rate-Limiter."
+      },
+      {
+        requiredTool: 4,
+        category: "ddos",
+        tag: "DDoS // HTTP",
+        payload: "HTTP GET SPAM x9999",
+        color: "#ff2a6d",
+        tip: "Aplikační HTTP Flood přetěžuje webový server! Nasadit [4] DDoS Rate-Limiter."
+      },
+      {
+        requiredTool: 4,
+        category: "ddos",
+        tag: "DDoS // ICMP",
+        payload: "ICMP AMPLIFICATION",
+        color: "#ff2a6d",
+        tip: "Zesílený ICMP ping flood! Zablokuj ho modulem [4] DDoS Rate-Limiter."
+      }
+    ];
+
+    const MINI_CHALLENGES = [
+      {
+        question: "Kolega obdržel e-mail z adresy 'podpora@mirosoft-security.com' s přílohou 'FAKTURA_2026.pdf.exe'. Co je na zprávě podezřelé?",
+        options: [
+          { text: "Překlep v doméně ('mirosoft') a spustitelný soubor .exe maskovaný jako PDF.", correct: true },
+          { text: "Nic, přípona .pdf.exe je standardní zabezpečený formát elektronické faktury.", correct: false },
+          { text: "Jde o DDoS útok, který lze vyřešit zvýšením rychlosti internetového připojení.", correct: false }
+        ],
+        explanation: "Správně! Typosquatting domény a dvojitá přípona .pdf.exe jsou klasické znaky phishingu a malwaru."
+      },
+      {
+        question: "Do přihlašovacího pole webové aplikace útočník zadal řetězec:  ' OR 1=1 --   Jak se proti tomuto útoku správně chrání vývojáři?",
+        options: [
+          { text: "Použitím parametrizovaných SQL dotazů (Prepared Statements) a filtrováním přes WAF.", correct: true },
+          { text: "Skrytím přihlašovacího formuláře pomocí tmavé barvy písma v CSS.", correct: false },
+          { text: "Přepnutím webu z protokolu HTTPS na nešifrovaný HTTP port 80.", correct: false }
+        ],
+        explanation: "Výborně! Parametrizované dotazy oddělí SQL příkaz od uživatelského vstupu a WAF zachytí škodlivé vzory."
+      },
+      {
+        question: "Připojuješ se z veřejné kavárny k firemnímu systému. Proč je kritické zkontrolovat, že web běží na HTTPS (TLS 1.3) místo HTTP?",
+        options: [
+          { text: "Na veřejné Wi-Fi může útočník odposlouchávat nešifrovaný HTTP provoz a získat hesla.", correct: true },
+          { text: "Protokol HTTP funguje pouze v pracovní dny, zatímco HTTPS i o víkendu.", correct: false },
+          { text: "HTTPS zrychluje nabíjení baterie notebooku na veřejné bezdrátové síti.", correct: false }
+        ],
+        explanation: "Přesně tak! TLS 1.3 šifruje komunikaci mezi tvým zařízením a serverem, takže ji na veřejné síti nelze přečíst."
+      },
+      {
+        question: "Server najednou dostává desítky tisíc požadavků za sekundu (TCP SYN Flood) z tisíců různých IP adres po celém světě. O co jde?",
+        options: [
+          { text: "Distribuovaný útok odepření služby (DDoS) vedený sítí nakažených zařízení (Botnet).", correct: true },
+          { text: "Běžná aktualizace operačního systému Windows na klientských stanicích.", correct: false },
+          { text: "Cross-Site Scripting (XSS) útok cílený na ukradení jednoho souboru cookie.", correct: false }
+        ],
+        explanation: "Skvěle! Proti DDoS útokům nasazujeme Rate-Limiting, anycast filtraci a ochranu před zahlcením spojení."
+      }
+    ];
+
+    // =========================================================================
+    // 2. PROCEDURÁLNÍ ZVUKOVÝ ENGINE (WEB AUDIO API)
+    // =========================================================================
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+
+      unlock() {
+        if (!this.ctx) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+          if (AudioContextClass) {
+            this.ctx = new AudioContextClass();
+          }
+        }
+        if (this.ctx && this.ctx.state === "suspended") {
+          this.ctx.resume();
+        }
+      }
+
+      tone(f1, f2, dur, type = "sine", vol = 0.12) {
+        if (this.muted) return;
+        this.unlock();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+
+        osc.type = type;
+        osc.frequency.setValueAtTime(f1, now);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(25, f2), now + dur);
+
+        gain.gain.setValueAtTime(vol, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + dur);
+      }
+
+      playClick() {
+        this.tone(620, 820, 0.06, "sine", 0.08);
+      }
+
+      playLaser(toolId) {
+        const baseFreq = { 1: 920, 2: 780, 3: 640, 4: 520 }[toolId] || 750;
+        this.tone(baseFreq, baseFreq * 0.32, 0.14, "sawtooth", 0.1);
+      }
+
+      playExplosion() {
+        this.tone(320, 65, 0.22, "triangle", 0.16);
+        setTimeout(() => this.tone(540, 980, 0.12, "sine", 0.09), 40);
+      }
+
+      playSafeChime() {
+        this.tone(587.33, 880, 0.14, "sine", 0.09);
+      }
+
+      playAlarm() {
+        this.tone(175, 95, 0.28, "square", 0.14);
+      }
+
+      playVictory() {
+        this.tone(523.25, 659.25, 0.14, "triangle", 0.13);
+        setTimeout(() => this.tone(659.25, 783.99, 0.14, "triangle", 0.13), 110);
+        setTimeout(() => this.tone(783.99, 1046.5, 0.28, "triangle", 0.15), 220);
+      }
+    }
+
+    const sfx = new SoundFX();
+
+    // =========================================================================
+    // 3. HERNÍ STAV A MĚŘENÍ ZNALOSTNÍHO POKROKU
+    // =========================================================================
+    const game = {
+      mode: "start", // 'start' | 'playing' | 'paused' | 'shop' | 'report'
+      wave: 1,
+      maxWaves: 5,
+      hp: 100,
+      maxHp: 100,
+      score: 0,
+      combo: 1,
+      credits: 100,
+      activeTool: 1,
+
+      // Aktivní vylepšení z obchodu
+      firewallShield: false, // Blokuje 1 průnik do Core
+      deepPacketScan: false, // Odhalí STEALTH pakety pro aktuální vlnu
+
+      // Dynamické rozměry plátna (aktualizováno přes ResizeObserver)
+      viewW: 1000,
+      viewH: 500,
+      dpr: 1,
+
+      // Herní objekty
+      packets: [],
+      particles: [],
+      lasers: [],
+      floatingTexts: [],
+      dataPulses: [],
+      boss: null,
+
+      // Časovač vlny
+      spawnedCount: 0,
+      waveTotalCount: 10,
+      spawnTimer: 0,
+      spawnInterval: 2.0,
+
+      // Animace a kamera
+      gridShift: 0,
+      radarRadius: 0,
+      coreSpin: 0,
+      shakeTimer: 0,
+      shakePower: 0,
+
+      // Pozice kurzoru a zaměřovač
+      pointerX: -999,
+      pointerY: -999,
+      hoveredPacket: null,
+      hoveredBoss: false,
+
+      // Statistiky pro Znalostní & Herní Report
+      stats: {
+        totalDecisions: 0,
+        correctDecisions: 0,
+        wrongDecisions: 0,
+        friendlyFire: 0,
+        knowledgeBonus: 0,
+        categories: {
+          encryption: { label: "Šifrování", correct: 0, total: 0, color: "#00f5d4" },
+          phishing:   { label: "Phishing", correct: 0, total: 0, color: "#f59e0b" },
+          webapp:     { label: "Web App / SQLi / XSS", correct: 0, total: 0, color: "#c084fc" },
+          ddos:       { label: "DDoS", correct: 0, total: 0, color: "#ff2a6d" },
+          legit:      { label: "Legitimní provoz", correct: 0, total: 0, color: "#10b981" }
+        }
+      }
+    };
+
+    function getKnowledgePercent() {
+      const s = game.stats;
+      if (s.totalDecisions === 0) return 100;
+      const raw = (s.correctDecisions / s.totalDecisions) * 100 + s.knowledgeBonus;
+      return Math.max(0, Math.min(100, Math.round(raw)));
+    }
+
+    function trackDecision(categoryKey, isCorrect, isFriendlyFire = false) {
+      const s = game.stats;
+      s.totalDecisions++;
+      if (isCorrect) {
+        s.correctDecisions++;
+      } else {
+        s.wrongDecisions++;
+        if (isFriendlyFire) s.friendlyFire++;
+      }
+
+      if (s.categories[categoryKey]) {
+        s.categories[categoryKey].total++;
+        if (isCorrect) s.categories[categoryKey].correct++;
+      }
+      refreshHUD();
+    }
+
+    // =========================================================================
+    // 4. NASTAVENÍ CANVASE S DEVICEPIXELRATIO A GEOMETRIE ARÉNY
+    // =========================================================================
+    const arenaEl = document.getElementById("arena-container");
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    function resizeCanvas() {
+      const rect = arenaEl.getBoundingClientRect();
+      const w = Math.max(320, Math.floor(rect.width));
+      const h = Math.max(240, Math.floor(rect.height));
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      game.viewW = w;
+      game.viewH = h;
+      game.dpr = dpr;
+
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    // Výpočet souřadnic klíčových bodů arény podle aktuální velikosti plátna
+    function getArenaMetrics() {
+      const w = game.viewW;
+      const h = game.viewH;
+      const gatewayX = Math.max(44, Math.min(68, w * 0.055));
+      const coreX = w - Math.max(76, Math.min(105, w * 0.085));
+      const coreY = h * 0.5;
+      const lanesY = [h * 0.19, h * 0.39, h * 0.61, h * 0.81];
+      return { w, h, gatewayX, coreX, coreY, lanesY };
+    }
+
+    // Inicializace jemných datových částic proudících v linkách
+    function initDataPulses() {
+      game.dataPulses = [];
+      for (let lane = 0; lane < 4; lane++) {
+        for (let i = 0; i < 3; i++) {
+          game.dataPulses.push({
+            lane,
+            progress: (i / 3) + Math.random() * 0.2,
+            speed: 0.18 + Math.random() * 0.08
+          });
+        }
+      }
+    }
+
+    // =========================================================================
+    // 5. ŘÍZENÍ VLN, PAKETŮ A FINÁLNÍHO BOSSE APT-26 ZERO-DAY
+    // =========================================================================
+    function startNewGame() {
+      game.wave = 1;
+      game.hp = 100;
+      game.maxHp = 100;
+      game.score = 0;
+      game.combo = 1;
+      game.credits = 100;
+      game.activeTool = 1;
+      game.firewallShield = false;
+      game.deepPacketScan = false;
+
+      game.packets = [];
+      game.particles = [];
+      game.lasers = [];
+      game.floatingTexts = [];
+      game.boss = null;
+
+      game.stats = {
+        totalDecisions: 0,
+        correctDecisions: 0,
+        wrongDecisions: 0,
+        friendlyFire: 0,
+        knowledgeBonus: 0,
+        categories: {
+          encryption: { label: "Šifrování", correct: 0, total: 0, color: "#00f5d4" },
+          phishing:   { label: "Phishing", correct: 0, total: 0, color: "#f59e0b" },
+          webapp:     { label: "Web App / SQLi / XSS", correct: 0, total: 0, color: "#c084fc" },
+          ddos:       { label: "DDoS", correct: 0, total: 0, color: "#ff2a6d" },
+          legit:      { label: "Legitimní provoz", correct: 0, total: 0, color: "#10b981" }
+        }
+      };
+
+      setActiveTool(1);
+      beginWave(1);
+      refreshHUD();
+    }
+
+    function beginWave(waveNum) {
+      game.wave = waveNum;
+      game.packets = [];
+      game.spawnedCount = 0;
+      game.spawnTimer = 0.55;
+      game.boss = null;
+
+      if (waveNum === 1) {
+        game.waveTotalCount = 10;
+        game.spawnInterval = 2.05;
+        showToast("VLNA 1/5: Bezpečný provoz (HTTPS/SSH) nech projít. HTTP a Phishing zneškodni moduly [1] a [2].", "#00f5d4");
+      } else if (waveNum === 2) {
+        game.waveTotalCount = 13;
+        game.spawnInterval = 1.85;
+        showToast("VLNA 2/5: Přicházejí webové útoky [3] WAF/SQL Štít a záplavy [4] DDoS Rate-Limiter!", "#c084fc");
+      } else if (waveNum === 3) {
+        game.waveTotalCount = 15;
+        game.spawnInterval = 1.75;
+        const dpiMsg = game.deepPacketScan
+          ? "VLNA 3/5: Deep Packet Scan je aktivní — všechny STEALTH pakety jsou odhaleny!"
+          : "VLNA 3/5 (STEALTH): Maskované pakety! Čti jejich payload text a vyber správný modul [1]–[4].";
+        showToast(dpiMsg, "#f59e0b");
+      } else if (waveNum === 4) {
+        game.waveTotalCount = 17;
+        game.spawnInterval = 1.6;
+        showToast("VLNA 4/5: Zvýšená intenzita útoků! Používej zaměřovač + klávesy 1–4 pro bleskovou reakci.", "#ff2a6d");
+      } else if (waveNum === 5) {
+        game.waveTotalCount = 14;
+        game.spawnInterval = 2.15;
+        createFinalBoss();
+        showToast("FINÁLNÍ VLNA 5/5: BOSS 'APT-26 ZERO-DAY'! Prolom jeho 4 štíty moduly [1]–[4]!", "#ff2a6d");
+      }
+
+      game.mode = "playing";
+      refreshHUD();
+    }
+
+    function createFinalBoss() {
+      const { gatewayX, coreY } = getArenaMetrics();
+      game.boss = {
+        name: "APT-26 ZERO-DAY",
+        x: gatewayX + 85,
+        y: coreY,
+        radius: 54,
+        hp: 400,
+        maxHp: 400,
+        speedNorm: 0.016, // pomalý postup napříč arénou (cca 60s do zásahu jádra)
+        angle: 0,
+        shields: [
+          { tool: 1, label: "[1] TLS", active: true, color: "#00f5d4" },
+          { tool: 2, label: "[2] PHISH", active: true, color: "#f59e0b" },
+          { tool: 3, label: "[3] WAF", active: true, color: "#c084fc" },
+          { tool: 4, label: "[4] DDoS", active: true, color: "#ff2a6d" }
+        ]
+      };
+    }
+
+    function spawnNetworkPacket() {
+      let candidates = PACKET_DEFINITIONS;
+      if (game.wave === 1) {
+        candidates = PACKET_DEFINITIONS.filter(p => p.requiredTool === 0 || p.requiredTool === 1 || p.requiredTool === 2);
+      }
+
+      const def = candidates[Math.floor(Math.random() * candidates.length)];
+      const lane = Math.floor(Math.random() * 4);
+
+      // Od 3. vlny mohou být útočné pakety maskované jako STEALTH (pokud není zakoupen Deep Packet Scan)
+      const isStealthCandidate = game.wave >= 3 && def.requiredTool !== 0 && Math.random() < (game.wave === 3 ? 0.5 : 0.65);
+      const isStealth = isStealthCandidate && !game.deepPacketScan;
+
+      // Normalizovaná pozice progress (0.0 u Gateway -> 1.0 u Server Core)
+      const startProgress = game.boss ? 0.16 : 0.0;
+      const baseSpeedNorm = 0.105 + game.wave * 0.012 + Math.random() * 0.015;
+
+      game.packets.push({
+        lane,
+        progress: startProgress,
+        speedNorm: baseSpeedNorm,
+        requiredTool: def.requiredTool,
+        category: def.category,
+        tag: isStealth ? "STEALTH // ANALYZUJ PAYLOAD" : def.tag,
+        payload: def.payload,
+        color: isStealth ? "#94a3b8" : def.color,
+        trueColor: def.color,
+        tip: def.tip,
+        isStealth,
+        pulsePhase: Math.random() * Math.PI * 2,
+        x: 0,
+        y: 0,
+        w: 200,
+        h: 38
+      });
+
+      game.spawnedCount++;
+    }
+
+    // =========================================================================
+    // 6. ZPRACOVÁNÍ ZÁSAHŮ, LASERŮ, EXPLOZÍ A PRŮNIKŮ DO CORE
+    // =========================================================================
+    function setActiveTool(toolId) {
+      game.activeTool = toolId;
+      document.querySelectorAll(".module-card").forEach(card => {
+        card.classList.toggle("active", Number(card.dataset.tool) === toolId);
+      });
+    }
+
+    function engagePacketWithTool(toolId, packet) {
+      if (game.mode !== "playing" || !packet) return;
+
+      const mod = MODULES[toolId];
+      const { coreX, coreY } = getArenaMetrics();
+
+      sfx.playLaser(toolId);
+      game.lasers.push({
+        x1: coreX - 42,
+        y1: coreY,
+        x2: packet.x,
+        y2: packet.y,
+        color: mod.color,
+        life: 0.22,
+        maxLife: 0.22
+      });
+
+      // 1) Hráč omylem sestřelil LEGITIMNÍ paket!
+      if (packet.requiredTool === 0) {
+        sfx.playAlarm();
+        game.combo = 1;
+        game.score = Math.max(0, game.score - 40);
+        createBurst(packet.x, packet.y, "#10b981", 18);
+        createFloatingText(packet.x, packet.y - 18, "CHYBA! LEGITIMNÍ PROVOZ", "#ff2a6d");
+        showToast("⚠️ Sestřelil jsi bezpečný provoz! " + packet.tip, "#ff2a6d");
+        trackDecision("legit", false, true);
+        removePacket(packet);
+        return;
+      }
+
+      // 2) Hráč použil SPRÁVNÝ obranný modul!
+      if (packet.requiredTool === toolId) {
+        sfx.playExplosion();
+        const pts = 100 * game.combo;
+        const cred = 15 + Math.min(20, game.combo * 2);
+        game.score += pts;
+        game.credits += cred;
+        game.combo = Math.min(10, game.combo + 1);
+
+        createBurst(packet.x, packet.y, mod.color, 26);
+        createFloatingText(packet.x, packet.y - 16, `+${pts} (${mod.short})`, mod.color);
+        trackDecision(packet.category, true);
+        removePacket(packet);
+        return;
+      }
+
+      // 3) Hráč použil ŠPATNÝ modul na hrozbu
+      sfx.playAlarm();
+      game.combo = 1;
+      createBurst(packet.x, packet.y, "#ffffff", 10);
+      createFloatingText(packet.x, packet.y - 16, "ŠPATNÝ MODUL!", "#fbbf24");
+      showToast("💡 Špatný modul! " + packet.tip, "#fbbf24");
+      trackDecision(packet.category, false, false);
+      packet.speedNorm *= 0.88; // mírné zpomalení, aby hráč stihl přepnout na správný modul
+    }
+
+    function engageBossWithTool(toolId) {
+      const boss = game.boss;
+      if (game.mode !== "playing" || !boss) return;
+
+      const mod = MODULES[toolId];
+      const { coreX, coreY } = getArenaMetrics();
+
+      sfx.playLaser(toolId);
+      game.lasers.push({
+        x1: coreX - 42,
+        y1: coreY,
+        x2: boss.x,
+        y2: boss.y,
+        color: mod.color,
+        life: 0.25,
+        maxLife: 0.25
+      });
+
+      const activeShield = boss.shields.find(s => s.tool === toolId && s.active);
+      if (activeShield) {
+        activeShield.active = false;
+        boss.hp = Math.max(0, boss.hp - 75);
+        game.score += 350;
+        game.credits += 35;
+        sfx.playExplosion();
+        createBurst(boss.x, boss.y, mod.color, 34);
+        createFloatingText(boss.x, boss.y - 34, `ŠTÍT ${activeShield.label} PROLOMEN!`, mod.color);
+        showToast(`🔥 Prolomil jsi obranný štít bosse pomocí ${mod.name}!`, mod.color);
+        trackDecision(mod.category, true);
+      } else {
+        const remainingShields = boss.shields.filter(s => s.active);
+        if (remainingShields.length === 0) {
+          boss.hp = Math.max(0, boss.hp - 35);
+          game.score += 140;
+          sfx.playExplosion();
+          createBurst(boss.x, boss.y, "#ff2a6d", 22);
+          createFloatingText(boss.x, boss.y - 26, "-35 HP JÁDRO BOSSE", "#ff2a6d");
+        } else {
+          sfx.playAlarm();
+          const needed = remainingShields.map(s => s.label).join(" ");
+          createFloatingText(boss.x, boss.y - 26, `ZAMIŘ NA: ${needed}`, "#fbbf24");
+        }
+      }
+
+      if (boss.hp <= 0) {
+        sfx.playVictory();
+        createBurst(boss.x, boss.y, "#00f5d4", 60);
+        createBurst(boss.x + 15, boss.y - 15, "#ff2a6d", 50);
+        createFloatingText(boss.x, boss.y, "APT-26 ZERO-DAY ELIMINOVÁN!", "#00f5d4");
+        game.score += 1500;
+        game.boss = null;
+      }
+      refreshHUD();
+    }
+
+    function onPacketReachCore(packet) {
+      const { coreX } = getArenaMetrics();
+
+      if (packet.requiredTool === 0) {
+        // Legitimní provoz bezpečně dorazil do Server Core
+        sfx.playSafeChime();
+        game.score += 50;
+        game.credits += 5;
+        createFloatingText(coreX - 55, packet.y - 12, "+50 SAFE // +5 ◈", "#10b981");
+        trackDecision("legit", true);
+      } else {
+        // Hrozba pronikla do Server Core!
+        if (game.firewallShield) {
+          game.firewallShield = false;
+          sfx.playExplosion();
+          createBurst(coreX - 35, packet.y, "#c084fc", 30);
+          createFloatingText(coreX - 75, packet.y - 14, "FIREWALL ŠTÍT POHLTIL ÚTOK!", "#e9d5ff");
+          showToast("🛡️ Core Firewall Štít pohltil průnik a ochránil integritu serveru!", "#c084fc");
+          trackDecision(packet.category, false, false);
+        } else {
+          sfx.playAlarm();
+          const dmg = 18;
+          game.hp = Math.max(0, game.hp - dmg);
+          game.combo = 1;
+          game.shakeTimer = 0.34;
+          game.shakePower = 9;
+          createBurst(coreX - 30, packet.y, "#ff2a6d", 32);
+          createFloatingText(coreX - 65, packet.y - 14, `-${dmg}% PRŮNIK!`, "#ff2a6d");
+          showToast("🚨 Průnik do Server Core! " + packet.tip, "#ff2a6d");
+          trackDecision(packet.category, false, false);
+        }
+      }
+
+      removePacket(packet);
+      refreshHUD();
+
+      if (game.hp <= 0) {
+        finishGame(false);
+      }
+    }
+
+    function removePacket(target) {
+      game.packets = game.packets.filter(p => p !== target);
+    }
+
+    function createBurst(x, y, color, count = 20) {
+      for (let i = 0; i < count; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 40 + Math.random() * 195;
+        game.particles.push({
+          x,
+          y,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          size: 2 + Math.random() * 3.5,
+          color,
+          life: 0.4 + Math.random() * 0.35,
+          maxLife: 0.75
+        });
+      }
+    }
+
+    function createFloatingText(x, y, text, color) {
+      game.floatingTexts.push({
+        x,
+        y,
+        text,
+        color,
+        life: 1.15,
+        maxLife: 1.15
+      });
+    }
+
+    let toastTimer = null;
+    function showToast(message, borderColor = "#00f5d4") {
+      const banner = document.getElementById("toast-banner");
+      const box = document.getElementById("toast-box");
+      box.textContent = message;
+      box.style.borderColor = borderColor;
+      banner.style.opacity = "1";
+
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        banner.style.opacity = "0";
+      }, 3800);
+    }
+
+    // =========================================================================
+    // 7. HLAVNÍ AKTUALIZAČNÍ SMYČKA (UPDATE)
+    // =========================================================================
+    let prevTime = 0;
+
+    function mainLoop(now) {
+      const dt = Math.min(0.05, (now - prevTime) / 1000 || 0.016);
+      prevTime = now;
+
+      updateSimulation(dt);
+      renderArena();
+
+      requestAnimationFrame(mainLoop);
+    }
+
+    function updateSimulation(dt) {
+      const { gatewayX, coreX, coreY, lanesY } = getArenaMetrics();
+      const travelSpan = Math.max(200, (coreX - 46) - (gatewayX + 34));
+
+      // Animace pozadí, radaru a reaktoru běží plynule stále
+      game.gridShift = (game.gridShift + 24 * dt) % 40;
+      game.radarRadius = (game.radarRadius + 150 * dt) % Math.max(game.viewW, game.viewH);
+      game.coreSpin += 1.05 * dt;
+
+      if (game.shakeTimer > 0) {
+        game.shakeTimer = Math.max(0, game.shakeTimer - dt);
+      }
+
+      // Proudící částice v optických linkách
+      for (const dp of game.dataPulses) {
+        dp.progress = (dp.progress + dp.speed * dt) % 1;
+      }
+
+      if (game.mode !== "playing") return;
+
+      // Spawnování paketů
+      if (game.spawnedCount < game.waveTotalCount || game.boss) {
+        game.spawnTimer -= dt;
+        if (game.spawnTimer <= 0) {
+          spawnNetworkPacket();
+          game.spawnTimer = game.spawnInterval;
+        }
+      }
+
+      // Pohyb a stav finálního Bosse APT-26 ZERO-DAY
+      if (game.boss) {
+        const b = game.boss;
+        b.angle += 0.9 * dt;
+        b.x += travelSpan * b.speedNorm * dt;
+        b.y = coreY + Math.sin(b.angle * 0.8) * (game.viewH * 0.14);
+
+        if (b.x + b.radius >= coreX - 42) {
+          // Boss dorazil až ke Core
+          sfx.playAlarm();
+          game.hp = 0;
+          game.boss = null;
+          refreshHUD();
+          finishGame(false);
+          return;
+        }
+      }
+
+      // Pohyb paketů podél 4 linek
+      for (let i = game.packets.length - 1; i >= 0; i--) {
+        const p = game.packets[i];
+        p.progress += p.speedNorm * dt;
+        p.pulsePhase += 4.2 * dt;
+
+        // Přepočet skutečných souřadnic karty paketu na základě rozměru plátna
+        p.w = Math.max(168, Math.min(245, p.payload.length * 8.1 + 42));
+        p.h = 38;
+        p.x = (gatewayX + 34) + p.progress * travelSpan;
+        p.y = lanesY[p.lane] + Math.sin(p.pulsePhase) * 1.5;
+
+        if (p.x + p.w * 0.5 >= coreX - 42) {
+          onPacketReachCore(p);
+        }
+      }
+
+      // Aktualizace zaměřování myší
+      updateHoverSelection();
+
+      // Aktualizace laserů
+      for (let i = game.lasers.length - 1; i >= 0; i--) {
+        game.lasers[i].life -= dt;
+        if (game.lasers[i].life <= 0) game.lasers.splice(i, 1);
+      }
+
+      // Aktualizace částic explozí
+      for (let i = game.particles.length - 1; i >= 0; i--) {
+        const pt = game.particles[i];
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+        pt.vx *= 0.93;
+        pt.vy *= 0.93;
+        pt.life -= dt;
+        if (pt.life <= 0) game.particles.splice(i, 1);
+      }
+
+      // Aktualizace plovoucích textů
+      for (let i = game.floatingTexts.length - 1; i >= 0; i--) {
+        const ft = game.floatingTexts[i];
+        ft.y -= 28 * dt;
+        ft.life -= dt;
+        if (ft.life <= 0) game.floatingTexts.splice(i, 1);
+      }
+
+      // Kontrola dokončení vlny
+      if (
+        game.spawnedCount >= game.waveTotalCount &&
+        game.packets.length === 0 &&
+        !game.boss &&
+        game.hp > 0
+      ) {
+        sfx.playVictory();
+        // Reset jednorázového Deep Packet Scanu po dokončení vlny
+        game.deepPacketScan = false;
+        refreshHUD();
+
+        if (game.wave < game.maxWaves) {
+          openBetweenWaveShop();
+        } else {
+          finishGame(true);
+        }
+      }
+    }
+
+    function updateHoverSelection() {
+      game.hoveredPacket = null;
+      game.hoveredBoss = false;
+
+      if (game.boss) {
+        const d = Math.hypot(game.pointerX - game.boss.x, game.pointerY - game.boss.y);
+        if (d <= game.boss.radius + 36) {
+          game.hoveredBoss = true;
+          return;
+        }
+      }
+
+      let bestDist = Infinity;
+      for (const p of game.packets) {
+        const halfW = p.w * 0.5 + 14;
+        const halfH = p.h * 0.5 + 14;
+        if (Math.abs(game.pointerX - p.x) <= halfW && Math.abs(game.pointerY - p.y) <= halfH) {
+          const dist = Math.hypot(game.pointerX - p.x, game.pointerY - p.y);
+          if (dist < bestDist) {
+            bestDist = dist;
+            game.hoveredPacket = p;
+          }
+        }
+      }
+    }
+
+    // =========================================================================
+    // 8. VYKRESLOVÁNÍ ARÉNY NA CANVAS (RENDER)
+    // =========================================================================
+    function renderArena() {
+      const { w, h, gatewayX, coreX, coreY, lanesY } = getArenaMetrics();
+
+      ctx.save();
+
+      // Screen shake při zásahu jádra
+      if (game.shakeTimer > 0) {
+        const sx = (Math.random() - 0.5) * game.shakePower * 2;
+        const sy = (Math.random() - 0.5) * game.shakePower * 2;
+        ctx.translate(sx, sy);
+      }
+
+      // 1) Tmavé pozadí
+      ctx.fillStyle = "#070b14";
+      ctx.fillRect(0, 0, w, h);
+
+      // 2) Kybernetická mřížka a radarový pulz
+      drawGridAndRadar(w, h, coreX, coreY);
+
+      // 3) 4 síťové linky (CH-01 až CH-04) + proudící částice
+      drawNetworkLanes(gatewayX, coreX, lanesY);
+
+      // 4) Levý vstupní uzel WAN Gateway
+      drawWanGateway(gatewayX, h);
+
+      // 5) Pravý hexagonální reaktor SERVER CORE
+      drawHexServerCore(coreX, coreY);
+
+      // 6) Finální Boss APT-26 ZERO-DAY (vlna 5)
+      if (game.boss) {
+        drawBossEntity(game.boss, game.hoveredBoss);
+      }
+
+      // 7) Pakety na linkách
+      for (const p of game.packets) {
+        drawPacketCard(p, p === game.hoveredPacket);
+      }
+
+      // 8) Laserové paprsky
+      for (const l of game.lasers) {
+        const alpha = l.life / l.maxLife;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.strokeStyle = l.color;
+        ctx.lineWidth = 6 * alpha;
+        ctx.shadowColor = l.color;
+        ctx.shadowBlur = 16;
+        ctx.beginPath();
+        ctx.moveTo(l.x1, l.y1);
+        ctx.lineTo(l.x2, l.y2);
+        ctx.stroke();
+
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2 * alpha;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 9) Částicové exploze
+      for (const pt of game.particles) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, pt.life / pt.maxLife);
+        ctx.fillStyle = pt.color;
+        ctx.shadowColor = pt.color;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 10) Plovoucí stavové texty
+      for (const ft of game.floatingTexts) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, ft.life / (ft.maxLife * 0.55));
+        ctx.font = "800 12px Consolas, monospace";
+        ctx.textAlign = "center";
+        ctx.fillStyle = ft.color;
+        ctx.shadowColor = "#000000";
+        ctx.shadowBlur = 6;
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.restore();
+      }
+
+      ctx.restore();
+    }
+
+    function drawGridAndRadar(w, h, coreX, coreY) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(0, 245, 212, 0.04)";
+      ctx.lineWidth = 1;
+
+      for (let x = game.gridShift; x < w; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+      for (let y = 20; y < h; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      // Radarový pulz vycházející ze Server Core
+      const maxR = Math.max(w, h);
+      const alpha = Math.max(0, 0.12 * (1 - game.radarRadius / maxR));
+      ctx.strokeStyle = `rgba(0, 245, 212, ${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(coreX, coreY, game.radarRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawNetworkLanes(gatewayX, coreX, lanesY) {
+      const startX = gatewayX + 28;
+      const endX = coreX - 48;
+      const span = endX - startX;
+
+      lanesY.forEach((y, idx) => {
+        ctx.save();
+        // Základní vodič
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.16)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(startX, y);
+        ctx.lineTo(endX, y);
+        ctx.stroke();
+
+        // Označení kanálu CH-01..04
+        ctx.font = "700 10px Consolas, monospace";
+        ctx.fillStyle = "rgba(148, 163, 184, 0.5)";
+        ctx.fillText(`CH-0${idx + 1}`, startX + 10, y - 9);
+        ctx.restore();
+      });
+
+      // Proudící datové částice zleva doprava
+      for (const dp of game.dataPulses) {
+        const y = lanesY[dp.lane];
+        const px = startX + dp.progress * span;
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 245, 212, 0.45)";
+        ctx.beginPath();
+        ctx.arc(px, y, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawWanGateway(gx, h) {
+      ctx.save();
+      const boxW = 44;
+      const boxH = Math.min(340, h * 0.74);
+      const topY = (h - boxH) / 2;
+
+      ctx.fillStyle = "rgba(11, 18, 33, 0.92)";
+      ctx.strokeStyle = "rgba(192, 132, 252, 0.55)";
+      ctx.lineWidth = 2;
+      drawRoundedRect(ctx, gx - boxW / 2, topY, boxW, boxH, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(gx, h / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.font = "800 11px Consolas, monospace";
+      ctx.fillStyle = "#d8b4fe";
+      ctx.textAlign = "center";
+      ctx.fillText("INTERNET // WAN", 0, 4);
+      ctx.restore();
+      ctx.restore();
+    }
+
+    function drawHexServerCore(cx, cy) {
+      ctx.save();
+      const hpRatio = game.hp / game.maxHp;
+      const coreColor = hpRatio > 0.5 ? "#00f5d4" : hpRatio > 0.25 ? "#f59e0b" : "#ff2a6d";
+
+      // Ochranný Firewall Štít (pokud je zakoupený)
+      if (game.firewallShield) {
+        ctx.save();
+        ctx.strokeStyle = "#c084fc";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 5]);
+        ctx.shadowColor = "#c084fc";
+        ctx.shadowBlur = 16;
+        drawHexagon(ctx, cx, cy, 66, -game.coreSpin * 0.6);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Vnější rotující hexagonální prstenec
+      ctx.save();
+      ctx.strokeStyle = coreColor;
+      ctx.lineWidth = 3.5;
+      ctx.shadowColor = coreColor;
+      ctx.shadowBlur = 18;
+      drawHexagon(ctx, cx, cy, 52, game.coreSpin * 0.5);
+      ctx.stroke();
+      ctx.restore();
+
+      // Vnitřní vyplněný hexagonální reaktor
+      const grad = ctx.createRadialGradient(cx, cy, 4, cx, cy, 40);
+      grad.addColorStop(0, coreColor);
+      grad.addColorStop(1, "rgba(7, 11, 20, 0.95)");
+      ctx.fillStyle = grad;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      drawHexagon(ctx, cx, cy, 38, -game.coreSpin * 0.35);
+      ctx.fill();
+      ctx.stroke();
+
+      // Ukazatel HP uvnitř reaktoru
+      ctx.font = "800 13px Consolas, monospace";
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.fillText(`${game.hp}%`, cx, cy + 4);
+
+      ctx.font = "800 10px Consolas, monospace";
+      ctx.fillStyle = coreColor;
+      ctx.fillText("SERVER CORE", cx, cy + 72);
+
+      ctx.restore();
+    }
+
+    function drawHexagon(ctx, cx, cy, radius, rotation = 0) {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = rotation + (i * Math.PI) / 3;
+        const x = cx + Math.cos(a) * radius;
+        const y = cy + Math.sin(a) * radius;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+    }
+
+    function drawPacketCard(p, isHovered) {
+      ctx.save();
+      const x = p.x - p.w / 2;
+      const y = p.y - p.h / 2;
+
+      // Vnější odlesk
+      ctx.shadowColor = isHovered ? "#ffffff" : p.color;
+      ctx.shadowBlur = isHovered ? 18 : 10;
+
+      // Tělo karty
+      ctx.fillStyle = "rgba(11, 18, 33, 0.95)";
+      ctx.strokeStyle = isHovered ? "#ffffff" : p.color;
+      ctx.lineWidth = isHovered ? 2.4 : 1.6;
+      drawRoundedRect(ctx, x, y, p.w, p.h, 9);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // Horní malý štítek kategorie / statusu
+      ctx.font = "800 9px Consolas, monospace";
+      ctx.fillStyle = p.color;
+      ctx.textAlign = "left";
+      ctx.fillText(p.tag, x + 10, y + 13);
+
+      // Hlavní payload text
+      ctx.font = "700 12px Consolas, monospace";
+      ctx.fillStyle = "#f8fafc";
+      ctx.fillText(p.payload, x + 10, y + 29);
+
+      // Taktický zaměřovač při najetí myší
+      if (isHovered) {
+        drawReticle(p.x, p.y, p.w + 14, p.h + 14, "[1-4] ZAMĚŘENO");
+      }
+
+      ctx.restore();
+    }
+
+    function drawBossEntity(boss, isHovered) {
+      ctx.save();
+
+      // Energetické paprsky spojující bosse se všemi 4 linkami
+      const { lanesY } = getArenaMetrics();
+      ctx.strokeStyle = "rgba(255, 42, 109, 0.22)";
+      ctx.lineWidth = 1.5;
+      lanesY.forEach(ly => {
+        ctx.beginPath();
+        ctx.moveTo(boss.x, boss.y);
+        ctx.lineTo(boss.x + 55, ly);
+        ctx.stroke();
+      });
+
+      // Hlavní tělo bosse
+      const grad = ctx.createRadialGradient(boss.x, boss.y, 6, boss.x, boss.y, boss.radius);
+      grad.addColorStop(0, "#ff2a6d");
+      grad.addColorStop(0.65, "#4c1d95");
+      grad.addColorStop(1, "rgba(7, 11, 20, 0.95)");
+
+      ctx.fillStyle = grad;
+      ctx.strokeStyle = isHovered ? "#ffffff" : "#ff2a6d";
+      ctx.lineWidth = 3;
+      ctx.shadowColor = "#ff2a6d";
+      ctx.shadowBlur = 22;
+      drawHexagon(ctx, boss.x, boss.y, boss.radius, boss.angle * 0.4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // 4 vrstvené obranné štíty kolem bosse ([1] TLS, [2] PHISH, [3] WAF, [4] DDoS)
+      boss.shields.forEach((s, idx) => {
+        if (!s.active) return;
+        const a = boss.angle + idx * (Math.PI / 2);
+        const sx = boss.x + Math.cos(a) * 76;
+        const sy = boss.y + Math.sin(a) * 76;
+
+        ctx.fillStyle = "#0b1221";
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 2;
+        drawRoundedRect(ctx, sx - 30, sy - 11, 60, 22, 7);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.font = "800 10px Consolas, monospace";
+        ctx.fillStyle = s.color;
+        ctx.textAlign = "center";
+        ctx.fillText(s.label, sx, sy + 3.5);
+      });
+
+      // Název a HP uprostřed bosse
+      ctx.font = "800 11px Consolas, monospace";
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.fillText("APT-26", boss.x, boss.y - 3);
+      ctx.font = "700 10px Consolas, monospace";
+      ctx.fillStyle = "#fbbf24";
+      ctx.fillText(`${boss.hp} HP`, boss.x, boss.y + 11);
+
+      // Lišta života bosse nahoře uprostřed arény
+      const barW = Math.min(300, game.viewW * 0.45);
+      const barX = (game.viewW - barW) / 2;
+      ctx.fillStyle = "rgba(11, 18, 33, 0.92)";
+      drawRoundedRect(ctx, barX, 12, barW, 18, 9);
+      ctx.fill();
+
+      ctx.fillStyle = "#ff2a6d";
+      drawRoundedRect(ctx, barX + 2, 14, (barW - 4) * (boss.hp / boss.maxHp), 14, 7);
+      ctx.fill();
+
+      ctx.font = "800 10px Consolas, monospace";
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(`BOSS: ${boss.name} (${boss.hp}/${boss.maxHp})`, game.viewW / 2, 24.5);
+
+      if (isHovered) {
+        drawReticle(boss.x, boss.y, 130, 130, "[1-4] PROLOMIT ŠTÍT");
+      }
+
+      ctx.restore();
+    }
+
+    function drawReticle(cx, cy, w, h, label) {
+      ctx.save();
+      const hw = w / 2;
+      const hh = h / 2;
+      const corner = 11;
+
+      ctx.strokeStyle = "#00f5d4";
+      ctx.lineWidth = 2.2;
+
+      // 4 rohy
+      ctx.beginPath();
+      ctx.moveTo(cx - hw, cy - hh + corner);
+      ctx.lineTo(cx - hw, cy - hh);
+      ctx.lineTo(cx - hw + corner, cy - hh);
+
+      ctx.moveTo(cx + hw - corner, cy - hh);
+      ctx.lineTo(cx + hw, cy - hh);
+      ctx.lineTo(cx + hw, cy - hh + corner);
+
+      ctx.moveTo(cx - hw, cy + hh - corner);
+      ctx.lineTo(cx - hw, cy + hh);
+      ctx.lineTo(cx - hw + corner, cy + hh);
+
+      ctx.moveTo(cx + hw - corner, cy + hh);
+      ctx.lineTo(cx + hw, cy + hh);
+      ctx.lineTo(cx + hw, cy + hh - corner);
+      ctx.stroke();
+
+      ctx.font = "800 10px Consolas, monospace";
+      ctx.fillStyle = "#00f5d4";
+      ctx.textAlign = "center";
+      ctx.fillText(label, cx, cy - hh - 6);
+      ctx.restore();
+    }
+
+    function drawRoundedRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    // =========================================================================
+    // 9. OVLÁDÁNÍ MYŠÍ, DOTYKEM A KLÁVESNICÍ (1–4)
+    // =========================================================================
+    canvas.addEventListener("mousemove", e => {
+      const rect = canvas.getBoundingClientRect();
+      game.pointerX = e.clientX - rect.left;
+      game.pointerY = e.clientY - rect.top;
+    });
+
+    canvas.addEventListener("mouseleave", () => {
+      game.pointerX = -999;
+      game.pointerY = -999;
+      game.hoveredPacket = null;
+      game.hoveredBoss = false;
+    });
+
+    canvas.addEventListener("click", e => {
+      if (game.mode !== "playing") return;
+      const rect = canvas.getBoundingClientRect();
+      game.pointerX = e.clientX - rect.left;
+      game.pointerY = e.clientY - rect.top;
+      updateHoverSelection();
+
+      if (game.hoveredBoss) {
+        engageBossWithTool(game.activeTool);
+      } else if (game.hoveredPacket) {
+        engagePacketWithTool(game.activeTool, game.hoveredPacket);
+      }
+    });
+
+    window.addEventListener("keydown", e => {
+      if (["1", "2", "3", "4"].includes(e.key)) {
+        const toolId = Number(e.key);
+        setActiveTool(toolId);
+
+        if (game.mode === "playing") {
+          if (game.hoveredBoss) {
+            engageBossWithTool(toolId);
+          } else if (game.hoveredPacket) {
+            engagePacketWithTool(toolId, game.hoveredPacket);
+          } else {
+            sfx.playClick();
+          }
+        }
+      }
+    });
+
+    document.querySelectorAll(".module-card").forEach(card => {
+      card.addEventListener("click", () => {
+        sfx.playClick();
+        setActiveTool(Number(card.dataset.tool));
+      });
+    });
+
+    // =========================================================================
+    // 10. TAKTICKÝ OBCHOD MEZI VLNAMI & BEZPEČNOSTNÍ MINI-VÝZVA
+    // =========================================================================
+    function openBetweenWaveShop() {
+      game.mode = "shop";
+      const overlay = document.getElementById("overlay-shop");
+      document.getElementById("shop-heading").textContent = `Příprava na Vlnu ${game.wave + 1} / ${game.maxWaves}`;
+      document.getElementById("shop-credits-val").textContent = game.credits;
+
+      renderShopUpgrades();
+      renderMiniChallenge(game.wave - 1);
+
+      overlay.classList.remove("hidden");
+    }
+
+    function renderShopUpgrades() {
+      const container = document.getElementById("shop-upgrades-list");
+      const upgrades = [
+        {
+          id: "repair",
+          title: "Oprava Core +25% HP",
+          desc: "Obnoví integritu hlavního reaktoru Server Core.",
+          cost: 60,
+          owned: game.hp >= game.maxHp,
+          badge: game.hp >= game.maxHp ? "PLNÉ HP" : "60 ◈"
+        },
+        {
+          id: "dpi",
+          title: "Deep Packet Scan",
+          desc: "Odhalí všechny maskované STEALTH pakety v příští vlně.",
+          cost: 75,
+          owned: game.deepPacketScan,
+          badge: game.deepPacketScan ? "AKTIVOVÁNO" : "75 ◈"
+        },
+        {
+          id: "shield",
+          title: "Core Firewall Štít",
+          desc: "Vytvoří energetickou bariéru, která pohltí 1 průnik do Core.",
+          cost: 90,
+          owned: game.firewallShield,
+          badge: game.firewallShield ? "AKTIVOVÁNO" : "90 ◈"
+        }
+      ];
+
+      container.innerHTML = upgrades.map(u => {
+        const canBuy = game.credits >= u.cost && !u.owned;
+        return `
+          <button
+            type="button"
+            data-upgrade="${u.id}"
+            data-cost="${u.cost}"
+            ${!canBuy ? "disabled" : ""}
+            class="shop-upgrade-btn w-full p-3 rounded-xl border text-left flex items-center justify-between gap-3 transition ${
+              canBuy
+                ? "bg-[#0b1221] border-slate-700 hover:border-[#00f5d4] cursor-pointer"
+                : "bg-[#0b1221]/50 border-slate-800/60 opacity-55 cursor-not-allowed"
+            }"
+          >
+            <div>
+              <div class="font-mono-soc text-xs font-bold text-white">${u.title}</div>
+              <div class="text-[11px] text-slate-400">${u.desc}</div>
+            </div>
+            <span class="font-mono-soc text-xs font-extrabold text-[#fbbf24] shrink-0">${u.badge}</span>
+          </button>
+        `;
+      }).join("");
+
+      container.querySelectorAll(".shop-upgrade-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const id = btn.dataset.upgrade;
+          const cost = Number(btn.dataset.cost);
+          if (game.credits < cost) return;
+
+          game.credits -= cost;
+          sfx.playExplosion();
+
+          if (id === "repair") game.hp = Math.min(game.maxHp, game.hp + 25);
+          if (id === "dpi") game.deepPacketScan = true;
+          if (id === "shield") game.firewallShield = true;
+
+          document.getElementById("shop-credits-val").textContent = game.credits;
+          refreshHUD();
+          renderShopUpgrades();
+        });
+      });
+    }
+
+    function renderMiniChallenge(index) {
+      const item = MINI_CHALLENGES[index % MINI_CHALLENGES.length];
+      const qEl = document.getElementById("quiz-question");
+      const optsEl = document.getElementById("quiz-options");
+      const fbEl = document.getElementById("quiz-feedback");
+      const stEl = document.getElementById("quiz-status");
+
+      qEl.textContent = item.question;
+      fbEl.classList.add("hidden");
+      stEl.textContent = "Čeká na odpověď";
+      stEl.className = "font-mono-soc text-[11px] text-[#fbbf24]";
+
+      optsEl.innerHTML = item.options.map((opt, idx) => `
+        <button
+          type="button"
+          data-opt="${idx}"
+          class="quiz-choice-btn w-full text-left p-2.5 rounded-xl bg-[#0b1221] hover:bg-slate-800 border border-slate-700 text-xs text-slate-200 transition cursor-pointer"
+        >
+          ${opt.text}
+        </button>
+      `).join("");
+
+      optsEl.querySelectorAll(".quiz-choice-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const chosenIdx = Number(btn.dataset.opt);
+          const isRight = item.options[chosenIdx].correct;
+
+          optsEl.querySelectorAll(".quiz-choice-btn").forEach((b, i) => {
+            b.disabled = true;
+            b.classList.remove("cursor-pointer", "hover:bg-slate-800");
+            if (item.options[i].correct) {
+              b.classList.add("border-[#00f5d4]", "bg-[#00f5d4]/15");
+            } else if (i === chosenIdx) {
+              b.classList.add("border-[#ff2a6d]", "bg-[#ff2a6d]/15");
+            }
+          });
+
+          fbEl.classList.remove("hidden");
+          if (isRight) {
+            sfx.playVictory();
+            game.credits += 120;
+            game.score += 250;
+            game.stats.knowledgeBonus += 3;
+            document.getElementById("shop-credits-val").textContent = game.credits;
+            renderShopUpgrades();
+            refreshHUD();
+
+            stEl.textContent = "SPRÁVNĚ (+120 ◈)";
+            stEl.className = "font-mono-soc text-[11px] font-bold text-[#00f5d4]";
+            fbEl.className = "mt-3 p-2.5 rounded-xl text-xs leading-relaxed bg-[#00f5d4]/15 border border-[#00f5d4]/40 text-[#00f5d4]";
+            fbEl.textContent = "✅ " + item.explanation;
+          } else {
+            sfx.playAlarm();
+            stEl.textContent = "CHYBNÁ ODPOVĚĎ";
+            stEl.className = "font-mono-soc text-[11px] font-bold text-[#ff2a6d]";
+            fbEl.className = "mt-3 p-2.5 rounded-xl text-xs leading-relaxed bg-[#ff2a6d]/15 border border-[#ff2a6d]/40 text-slate-200";
+            fbEl.textContent = "❌ " + item.explanation;
+          }
+        });
+      });
+    }
+
+    // =========================================================================
+    // 11. ZÁVĚREČNÝ ZNALOSTNÍ & HERNÍ REPORT + LOCALSTORAGE HISTORIE
+    // =========================================================================
+    function finishGame(isVictory) {
+      game.mode = "report";
+      if (isVictory) sfx.playVictory();
+
+      const knowledgePct = getKnowledgePercent();
+      const badgeEl = document.getElementById("report-badge");
+      const titleEl = document.getElementById("report-title");
+
+      if (isVictory) {
+        badgeEl.textContent = "VÍTĚZSTVÍ // INFRASTRUKTURA UBRÁNĚNA";
+        badgeEl.className = "font-mono-soc text-[11px] font-bold px-2.5 py-0.5 rounded bg-[#00f5d4]/15 text-[#00f5d4] border border-[#00f5d4]/40";
+        titleEl.textContent = "Znalostní & Herní Report — Mise Splněna";
+      } else {
+        badgeEl.textContent = "SERVER CORE KOMPROMITOVÁN";
+        badgeEl.className = "font-mono-soc text-[11px] font-bold px-2.5 py-0.5 rounded bg-[#ff2a6d]/15 text-[#ff2a6d] border border-[#ff2a6d]/40";
+        titleEl.textContent = "Znalostní & Herní Report — Analýza Incidentu";
+      }
+
+      document.getElementById("report-knowledge-val").textContent = `${knowledgePct} %`;
+      document.getElementById("report-final-score").textContent = game.score;
+      document.getElementById("report-correct-count").textContent = game.stats.correctDecisions;
+      document.getElementById("report-wrong-count").textContent = game.stats.wrongDecisions;
+
+      let rank = "RANK C — Junior Operátor";
+      if (knowledgePct >= 90 && isVictory) rank = "RANK S — Hlavní SOC Architekt";
+      else if (knowledgePct >= 78) rank = "RANK A — Senior Bezpečnostní Analytik";
+      else if (knowledgePct >= 62) rank = "RANK B — Síťový Obránce";
+      document.getElementById("report-rank-badge").textContent = rank;
+
+      // Vykreslení 5 kategorií přesnosti
+      const catList = Object.values(game.stats.categories);
+      let weakest = null;
+      let weakestPct = 101;
+
+      document.getElementById("report-categories").innerHTML = catList.map(c => {
+        const pct = c.total === 0 ? 100 : Math.round((c.correct / c.total) * 100);
+        if (c.total > 0 && pct < weakestPct) {
+          weakestPct = pct;
+          weakest = c;
+        }
+        return `
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300 font-medium">${c.label}</span>
+              <span class="font-mono-soc font-bold" style="color:${c.color}">${pct} % (${c.correct}/${c.total})</span>
+            </div>
+            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+              <div class="h-full rounded-full transition-all duration-500" style="width:${pct}%; background:${c.color}"></div>
+            </div>
+          </div>
+        `;
+      }).join("");
+
+      // Uložení a srovnání historie v localStorage
+      updateHistoryStorage(knowledgePct);
+
+      // Personalizované doporučení
+      const notes = [];
+      if (game.stats.friendlyFire > 0) {
+        notes.push(`Omylem jsi sestřelil ${game.stats.friendlyFire}× legitimní provoz (HTTPS/SSH/DNSSEC). Vždy nejprve zkontroluj, zda paket není bezpečný.`);
+      }
+      if (weakest && weakestPct < 80) {
+        notes.push(`Nejnižší úspěšnost jsi měl v kategorii "${weakest.label}" (${weakestPct} %). Doporučujeme projít příklady v Databázi hrozeb.`);
+      }
+      if (notes.length === 0) {
+        notes.push("Vynikající práce! Přesně jsi rozlišoval legitimní provoz od útoků i při maskovaných STEALTH paketech.");
+      }
+      document.getElementById("report-mentor-text").textContent = notes.join(" ");
+
+      document.getElementById("overlay-report").classList.remove("hidden");
+    }
+
+    function updateHistoryStorage(currentKnowledge) {
+      const KEY = "netguard_zeroday_attempts_v2";
+      let attempts = [];
+      try {
+        attempts = JSON.parse(localStorage.getItem(KEY) || "[]");
+      } catch (err) {
+        attempts = [];
+      }
+
+      attempts.push({
+        num: attempts.length + 1,
+        knowledge: currentKnowledge,
+        score: game.score
+      });
+      if (attempts.length > 8) attempts = attempts.slice(-8);
+
+      try {
+        localStorage.setItem(KEY, JSON.stringify(attempts));
+      } catch (err) {
+        // Fallback při omezeném úložišti
+      }
+
+      const summaryEl = document.getElementById("report-history-summary");
+      if (attempts.length === 1) {
+        summaryEl.innerHTML = `Zaznamenán <strong>1. pokus</strong> (${currentKnowledge} %). Zahraj si znovu a sleduj svůj pokrok!`;
+      } else {
+        const firstVal = attempts[0].knowledge;
+        const delta = currentKnowledge - firstVal;
+        if (delta > 0) {
+          summaryEl.innerHTML = `Pokus #${attempts.length}: <span class="text-[#00f5d4] font-bold">+${delta} % zlepšení</span> oproti 1. pokusu (${firstVal} % → ${currentKnowledge} %)!`;
+        } else if (delta < 0) {
+          summaryEl.innerHTML = `Pokus #${attempts.length}: ${delta} % oproti 1. pokusu (${firstVal} % → ${currentKnowledge} %).`;
+        } else {
+          summaryEl.innerHTML = `Pokus #${attempts.length}: Stejné znalostní skóre jako v 1. pokusu (${currentKnowledge} %).`;
+        }
+      }
+
+      document.getElementById("report-history-chart").innerHTML = attempts.map((a, idx) => {
+        const isCurrent = idx === attempts.length - 1;
+        const barH = Math.max(8, Math.round(a.knowledge * 0.42));
+        return `
+          <div class="flex-1 flex flex-col items-center gap-1">
+            <span class="font-mono-soc text-[9px] text-slate-400">${a.knowledge}%</span>
+            <div class="w-full rounded-t ${isCurrent ? "bg-[#00f5d4]" : "bg-[#c084fc]/60"}" style="height:${barH}px"></div>
+            <span class="font-mono-soc text-[9px] text-slate-500">#${a.num}</span>
+          </div>
+        `;
+      }).join("");
+    }
+
+    // =========================================================================
+    // 12. AKTUALIZACE HUD A NAPOJENÍ VŠECH TLAČÍTEK ROZHRANÍ
+    // =========================================================================
+    function refreshHUD() {
+      document.getElementById("hud-wave").textContent = `VLNA ${game.wave}/${game.maxWaves}`;
+
+      const hpPct = Math.round((game.hp / game.maxHp) * 100);
+      const hpBar = document.getElementById("hud-hp-bar");
+      const hpVal = document.getElementById("hud-hp-val");
+      hpBar.style.width = `${hpPct}%`;
+      hpVal.textContent = `${hpPct}%`;
+
+      if (hpPct > 50) {
+        hpBar.style.backgroundColor = "#00f5d4";
+        hpVal.style.color = "#00f5d4";
+      } else if (hpPct > 25) {
+        hpBar.style.backgroundColor = "#f59e0b";
+        hpVal.style.color = "#fbbf24";
+      } else {
+        hpBar.style.backgroundColor = "#ff2a6d";
+        hpVal.style.color = "#ff2a6d";
+      }
+
+      document.getElementById("hud-shield-badge").classList.toggle("hidden", !game.firewallShield);
+      document.getElementById("hud-dpi-badge").classList.toggle("hidden", !game.deepPacketScan);
+      document.getElementById("hud-knowledge").textContent = `${getKnowledgePercent()} %`;
+      document.getElementById("hud-score").textContent = game.score;
+      document.getElementById("hud-combo").textContent = `x${game.combo}`;
+      document.getElementById("hud-credits").textContent = game.credits;
+    }
+
+    // Spuštění hry ze Start Overlay
+    document.getElementById("btn-start-game").addEventListener("click", () => {
+      sfx.unlock();
+      sfx.playClick();
+      document.getElementById("overlay-start").classList.add("hidden");
+      startNewGame();
+    });
+
+    // Pokračování do další vlny z obchodu
+    document.getElementById("btn-next-wave").addEventListener("click", () => {
+      sfx.playClick();
+      document.getElementById("overlay-shop").classList.add("hidden");
+      beginWave(game.wave + 1);
+    });
+
+    // Restart po skončení hry
+    document.getElementById("btn-play-again").addEventListener("click", () => {
+      sfx.playClick();
+      document.getElementById("overlay-report").classList.add("hidden");
+      startNewGame();
+    });
+
+    // Databáze hrozeb (otevření & zavření s automatickou pauzou)
+    let modeBeforeModal = "start";
+    function openThreatModal() {
+      sfx.playClick();
+      modeBeforeModal = game.mode;
+      if (game.mode === "playing") {
+        game.mode = "paused";
+      }
+      document.getElementById("modal-codex").classList.remove("hidden");
+    }
+
+    function closeThreatModal() {
+      sfx.playClick();
+      document.getElementById("modal-codex").classList.add("hidden");
+      if (modeBeforeModal === "playing") {
+        game.mode = "playing";
+      }
+    }
+
+    document.getElementById("btn-hud-codex").addEventListener("click", openThreatModal);
+    document.getElementById("btn-start-codex").addEventListener("click", openThreatModal);
+    document.getElementById("btn-close-codex").addEventListener("click", closeThreatModal);
+
+    // Přepínání zvuku
+    document.getElementById("btn-hud-sound").addEventListener("click", e => {
+      sfx.muted = !sfx.muted;
+      e.currentTarget.textContent = sfx.muted ? "🔇" : "🔊";
+      if (!sfx.muted) sfx.playClick();
+    });
+
+    // Sledování změny velikosti arény
+    window.addEventListener("resize", resizeCanvas);
+    if (typeof ResizeObserver !== "undefined") {
+      new ResizeObserver(resizeCanvas).observe(arenaEl);
+    }
+
+    // Start po načtení okna
+    window.onload = function () {
+      resizeCanvas();
+      initDataPulses();
+      refreshHUD();
+      requestAnimationFrame(mainLoop);
+    };
+  </script>
+</body>
+</html>
