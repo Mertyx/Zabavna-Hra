@@ -68,4 +68,4 @@ Hru lze ovládat kombinací myši a klávesnice (podporuje **českou i anglickou
 ## 🚀 Jak hru spustit
 
 1. **Online:** Otevři odkaz na GitHub Pages uvedený v úvodu tohoto souboru.
-2. **Lokálně:** Stáhni si soubor `hra.html` a otevři ho v libovolném moderním webovém prohlížeči (Chrome, Edge, Firefox, Safari). Hra nevyžaduje žádnou instalaci ani server.
+2. **Lokálně:** Stáhni si soubor `index.html` a otevři ho v libovolném moderním webovém prohlížeči (Chrome, Edge, Firefox, Safari). Hra nevyžaduje žádnou instalaci ani server.
